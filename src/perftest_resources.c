@@ -38,6 +38,8 @@ static enum ibv_wr_opcode opcode_atomic_array[] = {IBV_WR_ATOMIC_CMP_AND_SWP,IBV
 struct perftest_parameters* duration_param;
 struct check_alive_data check_alive_data;
 
+int use_xgvmi = 0;
+
 /******************************************************************************
  * Beginning
  ******************************************************************************/
@@ -1723,7 +1725,11 @@ int create_single_mr(struct pingpong_context *ctx, struct perftest_parameters *u
 {
 	int i;
 	int flags = IBV_ACCESS_LOCAL_WRITE;
+	if (user_param->machine == SERVER)
+		use_xgvmi = 1;
 
+	if (use_xgvmi)
+		flags |= 15; // Make sure the flags meets xgvmi requirements
 
 	#if defined(__FreeBSD__)
 	ctx->is_contig_supported = FAILURE;
@@ -1845,6 +1851,20 @@ int create_single_mr(struct pingpong_context *ctx, struct perftest_parameters *u
 #endif
 
 	/* Allocating Memory region and assigning our buffer to it. */
+	if (use_xgvmi == 1)
+	{
+		#define BITS (sizeof(int) * CHAR_BIT)
+		char str[BITS + 1];
+
+		unsigned n = (unsigned)flags;
+		for (i = BITS - 1; i >= 0; --i) {
+        	str[i] = (n & 1) ? '1' : '0';
+        	n >>= 1;
+    	}
+		str[BITS] = '\0';
+
+		fprintf(stderr, "*** invoking ibv_reg_mr with flags %s\n", str);
+	}
 	ctx->mr[qp_index] = ibv_reg_mr(ctx->pd, ctx->buf[qp_index], ctx->buff_size, flags);
 
 	if (!ctx->mr[qp_index]) {
